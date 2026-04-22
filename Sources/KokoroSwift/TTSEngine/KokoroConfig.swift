@@ -149,19 +149,27 @@ struct KokoroConfig: Decodable {
   /// This method reads the configuration file from the module's Resources directory,
   /// parses it as JSON, and caches the result for future use.
   ///
+  /// Checks both the `Resources/` subdirectory and the bundle root to stay
+  /// resilient to iOS integrators that flatten the resource bundle to work
+  /// around Apple's codesign rejection of nested Resources inside a .bundle.
+  ///
   /// - Returns: Parsed KokoroConfig instance
-  /// - Note: Uses forced unwrapping (try!) as configuration loading is critical
-  ///         and should fail fast if the file is missing or malformed
+  /// - Note: Fails fast with a descriptive error if config.json cannot be found
+  ///         or cannot be parsed — configuration loading is a prerequisite for
+  ///         every subsequent operation, so recovery is not meaningful.
   nonisolated static func loadConfig() -> KokoroConfig {
-    // Locate config.json in the module bundle
-    let fileURL = Bundle.module.url(forResource: "config", withExtension: "json", subdirectory: "Resources")!
-    
-    // Read file contents
+    let fileURL: URL = {
+      if let url = Bundle.module.url(forResource: "config", withExtension: "json", subdirectory: "Resources") {
+        return url
+      }
+      if let url = Bundle.module.url(forResource: "config", withExtension: "json") {
+        return url
+      }
+      fatalError("KokoroSwift: config.json not found in module bundle (searched Resources/ and root). Bundle path: \(Bundle.module.bundlePath)")
+    }()
+
     let configJSON = try! String(contentsOf: fileURL, encoding: .utf8)
-    
-    // Parse JSON and cache the result
     KokoroConfig.config = try! JSONDecoder().decode(KokoroConfig.self, from: configJSON.data(using: .utf8)!)
-    
     return KokoroConfig.config!
   }
 }
